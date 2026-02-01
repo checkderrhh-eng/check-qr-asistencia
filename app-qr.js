@@ -24,10 +24,22 @@ const Storage = {
 };
 
 const initializeData = () => {
+    if (!Storage.get('empresas')) {
+        Storage.set('empresas', [
+            {
+                id: 'emp1',
+                nombre: 'Empresa Demo S.A.',
+                ruc: '80012345-6',
+                direccion: 'Asunción, Paraguay'
+            }
+        ]);
+    }
+
     if (!Storage.get('usuarios')) {
         Storage.set('usuarios', [
             {
                 id: '1',
+                empresaId: 'emp1',
                 legajo: '1001',
                 nombre: 'Juan Pérez',
                 email: 'juan@empresa.com',
@@ -36,16 +48,33 @@ const initializeData = () => {
                 rol: 'empleado',
                 horarioEntrada: '08:00',
                 horarioSalida: '17:00',
+                horarioAlmuerzoSalida: '12:00',
+                horarioAlmuerzoEntrada: '13:00',
                 qrCode: 'EMP-1001-ABC123'
             },
             {
-                id: 'admin',
+                id: 'admin1',
+                empresaId: 'emp1',
                 legajo: 'ADMIN',
-                nombre: 'Administrador',
+                nombre: 'Admin Empresa Demo',
                 email: 'admin@empresa.com',
                 password: 'admin123',
                 departamento: 'RRHH',
                 rol: 'admin',
+                horarioEntrada: '08:00',
+                horarioSalida: '17:00',
+                horarioAlmuerzoSalida: '12:00',
+                horarioAlmuerzoEntrada: '13:00'
+            },
+            {
+                id: 'superadmin',
+                empresaId: null, // Super admin no pertenece a empresa específica
+                legajo: 'SUPER',
+                nombre: 'Super Administrador',
+                email: 'super@checkrrhh.com',
+                password: 'super123',
+                departamento: 'Check de RRHH',
+                rol: 'superadmin',
                 horarioEntrada: '08:00',
                 horarioSalida: '17:00'
             }
@@ -64,6 +93,17 @@ const Logo = ({ className = "w-12 h-12" }) => (
         <circle cx="50" cy="50" r="45" fill="#38BDF8"/>
         <path d="M35 50 L45 60 L65 40" stroke="white" strokeWidth="6" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
+);
+
+// Footer con branding
+const BrandingFooter = () => (
+    <div className="text-center py-4 text-gray-500 text-sm">
+        <div className="flex items-center justify-center space-x-2">
+            <span>Una app de</span>
+            <Logo className="w-6 h-6" />
+            <span className="font-semibold text-[#38BDF8]">Check de Recursos Humanos</span>
+        </div>
+    </div>
 );
 
 // ==================== PANTALLA LOGIN ====================
@@ -86,49 +126,53 @@ const LoginScreen = ({ onLogin, onKiosko }) => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-[#7DD3FC] to-[#38BDF8] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-                <div className="text-center mb-8">
-                    <Logo className="w-20 h-20 mx-auto mb-4" />
-                    <h1 className="text-3xl font-bold text-gray-800">Check de Asistencia</h1>
-                    <p className="text-gray-600 mt-2">Sistema con Código QR</p>
-                </div>
+        <div className="min-h-screen bg-gradient-to-br from-[#7DD3FC] to-[#38BDF8] flex flex-col">
+            <div className="flex-1 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+                    <div className="text-center mb-8">
+                        <Logo className="w-20 h-20 mx-auto mb-4" />
+                        <h1 className="text-3xl font-bold text-gray-800">Check de Asistencia</h1>
+                        <p className="text-gray-600 mt-2">Sistema con Código QR</p>
+                    </div>
 
-                <form onSubmit={handleLogin} className="space-y-4 mb-4">
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-[#38BDF8] focus:outline-none"
-                        placeholder="Email"
-                        required
-                    />
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-[#38BDF8] focus:outline-none"
-                        placeholder="Contraseña"
-                        required
-                    />
-                    {error && <p className="text-red-600 text-sm text-center">{error}</p>}
-                    <button type="submit" className="w-full bg-gradient-to-r from-[#38BDF8] to-[#0EA5E9] text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all">
-                        Ingresar como Admin
-                    </button>
-                </form>
+                    <form onSubmit={handleLogin} className="space-y-4 mb-4">
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-[#38BDF8] focus:outline-none"
+                            placeholder="Email"
+                            required
+                        />
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-[#38BDF8] focus:outline-none"
+                            placeholder="Contraseña"
+                            required
+                        />
+                        {error && <p className="text-red-600 text-sm text-center">{error}</p>}
+                        <button type="submit" className="w-full bg-gradient-to-r from-[#38BDF8] to-[#0EA5E9] text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all">
+                            Ingresar
+                        </button>
+                    </form>
 
-                <div className="border-t pt-4">
-                    <button onClick={onKiosko} className="w-full bg-green-500 text-white py-3 rounded-xl font-semibold hover:bg-green-600 transition-all">
-                        📱 Modo Kiosco (Escanear QR)
-                    </button>
-                </div>
+                    <div className="border-t pt-4">
+                        <button onClick={onKiosko} className="w-full bg-green-500 text-white py-3 rounded-xl font-semibold hover:bg-green-600 transition-all">
+                            📱 Modo Kiosco (Escanear QR)
+                        </button>
+                    </div>
 
-                <div className="mt-4 p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
-                    <p className="font-semibold mb-1">Usuarios de prueba:</p>
-                    <p><strong>Admin:</strong> admin@empresa.com / admin123</p>
-                    <p><strong>Empleado:</strong> juan@empresa.com / 1234</p>
+                    <div className="mt-4 p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
+                        <p className="font-semibold mb-1">Usuarios de prueba:</p>
+                        <p><strong>Super Admin:</strong> super@checkrrhh.com / super123</p>
+                        <p><strong>Admin Empresa:</strong> admin@empresa.com / admin123</p>
+                        <p><strong>Empleado:</strong> juan@empresa.com / 1234</p>
+                    </div>
                 </div>
             </div>
+            <BrandingFooter />
         </div>
     );
 };
@@ -139,17 +183,14 @@ const KioskoScreen = ({ onBack }) => {
     const [scanning, setScanning] = useState(false);
     const [lastScan, setLastScan] = useState(null);
     const [message, setMessage] = useState('');
+    const [empresaActual, setEmpresaActual] = useState(null);
     const scannerRef = useRef(null);
-    const [location, setLocation] = useState(null);
 
     useEffect(() => {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                () => setLocation({ lat: -25.2637, lng: -57.5759 })
-            );
-        } else {
-            setLocation({ lat: -25.2637, lng: -57.5759 });
+        // Cargar empresa por defecto (la primera)
+        const empresas = Storage.get('empresas') || [];
+        if (empresas.length > 0) {
+            setEmpresaActual(empresas[0]);
         }
 
         return () => {
@@ -205,11 +246,16 @@ const KioskoScreen = ({ onBack }) => {
 
         const marcacionesHoy = marcaciones.filter(m => m.usuarioId === empleado.id && m.fecha === today);
         
+        // Determinar tipo de marcación
         let tipo = 'entrada';
         const ultimaMarcacion = marcacionesHoy[marcacionesHoy.length - 1];
         
         if (ultimaMarcacion) {
             if (ultimaMarcacion.tipo === 'entrada') {
+                tipo = 'salida_almuerzo';
+            } else if (ultimaMarcacion.tipo === 'salida_almuerzo') {
+                tipo = 'entrada_almuerzo';
+            } else if (ultimaMarcacion.tipo === 'entrada_almuerzo') {
                 tipo = 'salida';
             } else if (ultimaMarcacion.tipo === 'salida') {
                 setMessage('⚠️ Ya registraste salida hoy');
@@ -226,32 +272,33 @@ const KioskoScreen = ({ onBack }) => {
         const newMarcacion = {
             id: Date.now().toString(),
             usuarioId: empleado.id,
+            empresaId: empleado.empresaId,
+            empresaNombre: empresaActual?.nombre || 'Sin empresa',
             usuarioNombre: empleado.nombre,
             legajo: empleado.legajo,
             tipo,
             hora,
             fecha: today,
-            ubicacion: location,
             estado
         };
 
         marcaciones.push(newMarcacion);
         Storage.set('marcaciones', marcaciones);
 
+        const tipoTexto = tipo === 'entrada' ? 'ENTRADA' :
+                         tipo === 'salida_almuerzo' ? 'SALIDA ALMUERZO' :
+                         tipo === 'entrada_almuerzo' ? 'ENTRADA ALMUERZO' :
+                         'SALIDA';
+
         setLastScan({
             nombre: empleado.nombre,
-            tipo,
+            tipo: tipoTexto,
             hora,
             estado
         });
 
-        setMessage(`✅ ${tipo.toUpperCase()} registrada: ${empleado.nombre}`);
+        setMessage(`✅ ${tipoTexto} registrada: ${empleado.nombre}`);
         
-        // Sonido de éxito (opcional)
-        try {
-            new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZTRQNUJ7j8K1iHAU7k9nxx3ElBSl+zPLaizsIGGS56eajUxQLTKXh8bllHgU2jdXxzHksBSh+zPLajTsHGGS56OajUxQLTKXh8bllHgU2jdXxzHksBSh+zPLajTsHGGS56OajUxQLTKXh8bllHgU2jdXxzHksBSh+zPLajTsHGGS56OajUxQLTKXh8bllHgU2jdXxzHksBSh+zPLajTsHGGS56OajUxQLTKXh8bllHgU2jdXxzHksBSh+zPLajTsHGGS56OajUxQLTKXh8bllHgU2jdXxzHksBSh+zPLajTsHGGS56OajUxQLTKXh8bllHgU2jdXxzHksBQ==').play();
-        } catch (e) {}
-
         setTimeout(() => {
             setMessage('');
             setLastScan(null);
@@ -259,12 +306,17 @@ const KioskoScreen = ({ onBack }) => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-100">
+        <div className="min-h-screen bg-gray-100 flex flex-col">
             <div className="bg-gradient-to-r from-[#38BDF8] to-[#0EA5E9] text-white p-6">
                 <div className="flex items-center justify-between max-w-4xl mx-auto">
                     <div className="flex items-center space-x-3">
                         <Logo className="w-10 h-10" />
-                        <h1 className="text-2xl font-bold">Modo Kiosco</h1>
+                        <div>
+                            <h1 className="text-2xl font-bold">Modo Kiosco</h1>
+                            {empresaActual && (
+                                <p className="text-sm opacity-90">{empresaActual.nombre}</p>
+                            )}
+                        </div>
                     </div>
                     <button onClick={onBack} className="bg-white text-[#38BDF8] px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-all">
                         Salir
@@ -272,7 +324,7 @@ const KioskoScreen = ({ onBack }) => {
                 </div>
             </div>
 
-            <div className="max-w-4xl mx-auto p-6">
+            <div className="flex-1 max-w-4xl mx-auto p-6 w-full">
                 {message && (
                     <div className={`mb-6 p-4 rounded-xl text-center font-bold text-lg ${
                         message.includes('✅') ? 'bg-green-100 text-green-800' : 
@@ -288,10 +340,8 @@ const KioskoScreen = ({ onBack }) => {
                         <h3 className="text-xl font-bold text-gray-800 mb-2">✅ Última Marcación</h3>
                         <p className="text-3xl font-bold text-[#38BDF8] mb-4">{lastScan.nombre}</p>
                         <div className="flex items-center justify-between">
-                            <span className={`px-6 py-3 rounded-full font-bold text-lg ${
-                                lastScan.tipo === 'entrada' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-                            }`}>
-                                {lastScan.tipo.toUpperCase()}
+                            <span className="px-6 py-3 rounded-full font-bold text-lg bg-green-500 text-white">
+                                {lastScan.tipo}
                             </span>
                             <span className="text-4xl font-bold text-gray-800">{lastScan.hora}</span>
                         </div>
@@ -321,17 +371,17 @@ const KioskoScreen = ({ onBack }) => {
 
                 <div className="mt-6 bg-blue-50 rounded-xl p-4 text-center text-blue-700">
                     <p className="font-semibold text-lg">📱 Acerca tu gafete QR a la cámara</p>
-                    <p className="text-sm mt-2">El sistema detectará automáticamente si es entrada o salida</p>
-                    <p className="text-xs mt-2 text-blue-600">Ubicación: {location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Detectando...'}</p>
+                    <p className="text-sm mt-2">El sistema detectará automáticamente el tipo de marcación</p>
                 </div>
             </div>
+            <BrandingFooter />
         </div>
     );
 };
 
 // ==================== MODAL AGREGAR EMPLEADO ====================
 
-const AddEmpleadoModal = ({ onClose, onSave }) => {
+const AddEmpleadoModal = ({ onClose, onSave, empresaId }) => {
     const [formData, setFormData] = useState({
         nombre: '',
         email: '',
@@ -339,7 +389,9 @@ const AddEmpleadoModal = ({ onClose, onSave }) => {
         legajo: '',
         departamento: '',
         horarioEntrada: '08:00',
-        horarioSalida: '17:00'
+        horarioSalida: '17:00',
+        horarioAlmuerzoSalida: '12:00',
+        horarioAlmuerzoEntrada: '13:00'
     });
 
     const handleSubmit = (e) => {
@@ -391,26 +443,105 @@ const AddEmpleadoModal = ({ onClose, onSave }) => {
                         className="w-full px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
                         required
                     />
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-xs text-gray-600 mb-1">Hora Entrada</label>
-                            <input
-                                type="time"
-                                value={formData.horarioEntrada}
-                                onChange={(e) => setFormData({...formData, horarioEntrada: e.target.value})}
-                                className="w-full px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-gray-600 mb-1">Hora Salida</label>
-                            <input
-                                type="time"
-                                value={formData.horarioSalida}
-                                onChange={(e) => setFormData({...formData, horarioSalida: e.target.value})}
-                                className="w-full px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
-                            />
+                    
+                    <div className="border-t pt-3 mt-3">
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Horarios</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs text-gray-600 mb-1">Entrada</label>
+                                <input
+                                    type="time"
+                                    value={formData.horarioEntrada}
+                                    onChange={(e) => setFormData({...formData, horarioEntrada: e.target.value})}
+                                    className="w-full px-3 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-600 mb-1">Salida</label>
+                                <input
+                                    type="time"
+                                    value={formData.horarioSalida}
+                                    onChange={(e) => setFormData({...formData, horarioSalida: e.target.value})}
+                                    className="w-full px-3 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-600 mb-1">Salida Almuerzo</label>
+                                <input
+                                    type="time"
+                                    value={formData.horarioAlmuerzoSalida}
+                                    onChange={(e) => setFormData({...formData, horarioAlmuerzoSalida: e.target.value})}
+                                    className="w-full px-3 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-600 mb-1">Entrada Almuerzo</label>
+                                <input
+                                    type="time"
+                                    value={formData.horarioAlmuerzoEntrada}
+                                    onChange={(e) => setFormData({...formData, horarioAlmuerzoEntrada: e.target.value})}
+                                    className="w-full px-3 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none text-sm"
+                                />
+                            </div>
                         </div>
                     </div>
+
+                    <div className="flex gap-3 mt-6">
+                        <button type="button" onClick={onClose} className="flex-1 bg-gray-200 py-2 rounded-lg font-semibold">
+                            Cancelar
+                        </button>
+                        <button type="submit" className="flex-1 bg-[#38BDF8] text-white py-2 rounded-lg font-semibold">
+                            Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// ==================== MODAL AGREGAR EMPRESA ====================
+
+const AddEmpresaModal = ({ onClose, onSave }) => {
+    const [formData, setFormData] = useState({
+        nombre: '',
+        ruc: '',
+        direccion: ''
+    });
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+                <h3 className="text-xl font-bold mb-4">Agregar Nueva Empresa</h3>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <input
+                        type="text"
+                        placeholder="Nombre de la empresa *"
+                        value={formData.nombre}
+                        onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                        className="w-full px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                        required
+                    />
+                    <input
+                        type="text"
+                        placeholder="RUC *"
+                        value={formData.ruc}
+                        onChange={(e) => setFormData({...formData, ruc: e.target.value})}
+                        className="w-full px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                        required
+                    />
+                    <input
+                        type="text"
+                        placeholder="Dirección"
+                        value={formData.direccion}
+                        onChange={(e) => setFormData({...formData, direccion: e.target.value})}
+                        className="w-full px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                    />
                     <div className="flex gap-3 mt-6">
                         <button type="button" onClick={onClose} className="flex-1 bg-gray-200 py-2 rounded-lg font-semibold">
                             Cancelar
@@ -430,17 +561,40 @@ const AddEmpleadoModal = ({ onClose, onSave }) => {
 const AdminPanel = ({ user, onLogout }) => {
     const [view, setView] = useState('dashboard');
     const [usuarios, setUsuarios] = useState([]);
+    const [empresas, setEmpresas] = useState([]);
     const [marcaciones, setMarcaciones] = useState([]);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showAddEmpresaModal, setShowAddEmpresaModal] = useState(false);
     const [showQRModal, setShowQRModal] = useState(null);
+    const [selectedEmpresa, setSelectedEmpresa] = useState(null);
+    
+    // Filtros
+    const [filtroEmpleado, setFiltroEmpleado] = useState('');
+    const [filtroFecha, setFiltroFecha] = useState('');
 
     useEffect(() => {
         loadData();
     }, [view]);
 
     const loadData = () => {
-        setUsuarios(Storage.get('usuarios') || []);
-        setMarcaciones(Storage.get('marcaciones') || []);
+        const allUsuarios = Storage.get('usuarios') || [];
+        const allEmpresas = Storage.get('empresas') || [];
+        const allMarcaciones = Storage.get('marcaciones') || [];
+        
+        setEmpresas(allEmpresas);
+        
+        if (user.rol === 'superadmin') {
+            setUsuarios(allUsuarios);
+            setMarcaciones(allMarcaciones);
+            if (!selectedEmpresa && allEmpresas.length > 0) {
+                setSelectedEmpresa(allEmpresas[0].id);
+            }
+        } else {
+            // Admin regular solo ve su empresa
+            setUsuarios(allUsuarios.filter(u => u.empresaId === user.empresaId));
+            setMarcaciones(allMarcaciones.filter(m => m.empresaId === user.empresaId));
+            setSelectedEmpresa(user.empresaId);
+        }
     };
 
     const generateQRCode = (empleado) => {
@@ -475,28 +629,61 @@ const AdminPanel = ({ user, onLogout }) => {
         const newUser = {
             ...formData,
             id: Date.now().toString(),
+            empresaId: selectedEmpresa,
             rol: 'empleado',
             qrCode: `EMP-${formData.legajo}-${Date.now().toString().slice(-6)}`
         };
-        const updatedUsers = [...usuarios, newUser];
+        const allUsuarios = Storage.get('usuarios') || [];
+        const updatedUsers = [...allUsuarios, newUser];
         Storage.set('usuarios', updatedUsers);
-        setUsuarios(updatedUsers);
+        loadData();
         setShowAddModal(false);
         alert('✅ Empleado agregado correctamente. Genera su QR desde la lista.');
     };
 
+    const addEmpresa = (formData) => {
+        const newEmpresa = {
+            ...formData,
+            id: Date.now().toString()
+        };
+        const allEmpresas = Storage.get('empresas') || [];
+        const updatedEmpresas = [...allEmpresas, newEmpresa];
+        Storage.set('empresas', updatedEmpresas);
+        loadData();
+        setShowAddEmpresaModal(false);
+        alert('✅ Empresa agregada correctamente.');
+    };
+
     const downloadReport = () => {
-        const csv = [['Fecha', 'Empleado', 'Legajo', 'Tipo', 'Hora', 'Estado', 'Latitud', 'Longitud']];
-        marcaciones.forEach(m => {
+        const empresaObj = empresas.find(e => e.id === selectedEmpresa);
+        const empresaNombre = empresaObj ? empresaObj.nombre : 'Todas';
+        
+        let marcacionesFiltradas = marcaciones;
+        
+        // Aplicar filtros
+        if (selectedEmpresa && user.rol === 'superadmin') {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => m.empresaId === selectedEmpresa);
+        }
+        if (filtroEmpleado) {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => 
+                m.usuarioNombre.toLowerCase().includes(filtroEmpleado.toLowerCase()) ||
+                m.legajo.toLowerCase().includes(filtroEmpleado.toLowerCase())
+            );
+        }
+        if (filtroFecha) {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => m.fecha === filtroFecha);
+        }
+
+        const csv = [['Empresa', 'Fecha', 'Empleado', 'Legajo', 'Tipo', 'Hora', 'Estado']];
+        marcacionesFiltradas.forEach(m => {
             csv.push([
+                m.empresaNombre || empresaNombre,
                 m.fecha, 
                 m.usuarioNombre, 
                 m.legajo, 
-                m.tipo, 
+                m.tipo.replace('_', ' '), 
                 m.hora, 
-                m.estado,
-                m.ubicacion ? m.ubicacion.lat : '',
-                m.ubicacion ? m.ubicacion.lng : ''
+                m.estado
             ]);
         });
         const csvContent = csv.map(row => row.join(',')).join('\n');
@@ -504,22 +691,46 @@ const AdminPanel = ({ user, onLogout }) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `reporte-asistencia-${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `reporte-${empresaNombre}-${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
     };
 
-    const empleados = usuarios.filter(u => u.rol === 'empleado');
+    const empleadosFiltrados = selectedEmpresa 
+        ? usuarios.filter(u => u.empresaId === selectedEmpresa && u.rol === 'empleado')
+        : usuarios.filter(u => u.rol === 'empleado');
+
     const today = new Date().toISOString().split('T')[0];
-    const marcacionesHoy = marcaciones.filter(m => m.fecha === today);
+    const marcacionesHoy = selectedEmpresa
+        ? marcaciones.filter(m => m.fecha === today && m.empresaId === selectedEmpresa)
+        : marcaciones.filter(m => m.fecha === today);
+
+    // Aplicar filtros a marcaciones mostradas
+    let marcacionesMostradas = marcaciones;
+    if (selectedEmpresa && user.rol === 'superadmin') {
+        marcacionesMostradas = marcacionesMostradas.filter(m => m.empresaId === selectedEmpresa);
+    }
+    if (filtroEmpleado) {
+        marcacionesMostradas = marcacionesMostradas.filter(m => 
+            m.usuarioNombre.toLowerCase().includes(filtroEmpleado.toLowerCase()) ||
+            m.legajo.toLowerCase().includes(filtroEmpleado.toLowerCase())
+        );
+    }
+    if (filtroFecha) {
+        marcacionesMostradas = marcacionesMostradas.filter(m => m.fecha === filtroFecha);
+    }
+
+    const empresaActual = empresas.find(e => e.id === selectedEmpresa);
 
     return (
-        <div className="min-h-screen bg-gray-100">
+        <div className="min-h-screen bg-gray-100 flex flex-col">
             <div className="bg-gradient-to-r from-[#38BDF8] to-[#0EA5E9] text-white p-4">
                 <div className="max-w-6xl mx-auto flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <Logo className="w-10 h-10" />
                         <div>
-                            <h1 className="text-xl font-bold">Panel Administrativo</h1>
+                            <h1 className="text-xl font-bold">
+                                {user.rol === 'superadmin' ? 'Super Admin' : 'Panel Administrativo'}
+                            </h1>
                             <p className="text-sm opacity-90">{user.nombre}</p>
                         </div>
                     </div>
@@ -529,7 +740,33 @@ const AdminPanel = ({ user, onLogout }) => {
                 </div>
             </div>
 
-            <div className="max-w-6xl mx-auto p-4">
+            <div className="flex-1 max-w-6xl mx-auto p-4 w-full">
+                {/* Selector de Empresa (solo para superadmin) */}
+                {user.rol === 'superadmin' && empresas.length > 0 && (
+                    <div className="mb-4 bg-white p-4 rounded-xl shadow">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Empresa:</label>
+                        <div className="flex gap-3">
+                            <select
+                                value={selectedEmpresa || ''}
+                                onChange={(e) => setSelectedEmpresa(e.target.value)}
+                                className="flex-1 px-4 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                            >
+                                {empresas.map(emp => (
+                                    <option key={emp.id} value={emp.id}>
+                                        {emp.nombre} - {emp.ruc}
+                                    </option>
+                                ))}
+                            </select>
+                            <button 
+                                onClick={() => setShowAddEmpresaModal(true)}
+                                className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600"
+                            >
+                                + Nueva Empresa
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Tabs */}
                 <div className="grid grid-cols-3 gap-4 mb-6">
                     <button 
@@ -561,10 +798,20 @@ const AdminPanel = ({ user, onLogout }) => {
                 {/* Vista Dashboard */}
                 {view === 'dashboard' && (
                     <div className="space-y-4">
+                        {empresaActual && (
+                            <div className="bg-white p-4 rounded-xl shadow">
+                                <h3 className="font-bold text-lg text-gray-800">{empresaActual.nombre}</h3>
+                                <p className="text-sm text-gray-600">RUC: {empresaActual.ruc}</p>
+                                {empresaActual.direccion && (
+                                    <p className="text-sm text-gray-600">{empresaActual.direccion}</p>
+                                )}
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-3 gap-4">
                             <div className="bg-white p-6 rounded-xl shadow text-center">
-                                <p className="text-4xl font-bold text-green-600">{empleados.length}</p>
-                                <p className="text-gray-600 mt-2">Empleados Totales</p>
+                                <p className="text-4xl font-bold text-green-600">{empleadosFiltrados.length}</p>
+                                <p className="text-gray-600 mt-2">Empleados</p>
                             </div>
                             <div className="bg-white p-6 rounded-xl shadow text-center">
                                 <p className="text-4xl font-bold text-blue-600">
@@ -590,15 +837,15 @@ const AdminPanel = ({ user, onLogout }) => {
                                         <div key={m.id} className="flex justify-between items-center py-3 border-b last:border-0">
                                             <div>
                                                 <p className="font-semibold">{m.usuarioNombre}</p>
-                                                <p className="text-sm text-gray-500">Legajo: {m.legajo}</p>
+                                                <p className="text-sm text-gray-500">
+                                                    Legajo: {m.legajo} | {m.tipo.replace('_', ' ')}
+                                                </p>
                                             </div>
                                             <div className="text-right">
                                                 <p className="font-bold text-[#38BDF8] text-lg">{m.hora}</p>
-                                                <span className={`text-xs px-3 py-1 rounded-full font-semibold ${
-                                                    m.tipo === 'entrada' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                                }`}>
-                                                    {m.tipo}
-                                                </span>
+                                                {m.estado === 'tarde' && (
+                                                    <span className="text-xs text-orange-600 font-semibold">⚠️ Tarde</span>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -614,18 +861,22 @@ const AdminPanel = ({ user, onLogout }) => {
                         <button 
                             onClick={() => setShowAddModal(true)} 
                             className="w-full bg-green-500 text-white py-3 rounded-xl font-bold mb-4 hover:bg-green-600 transition-all"
+                            disabled={!selectedEmpresa}
                         >
                             + Agregar Nuevo Empleado
                         </button>
 
                         <div className="grid gap-4">
-                            {empleados.map(emp => (
+                            {empleadosFiltrados.map(emp => (
                                 <div key={emp.id} className="bg-white p-4 rounded-xl shadow flex justify-between items-center">
                                     <div>
                                         <p className="font-bold text-lg">{emp.nombre}</p>
                                         <p className="text-sm text-gray-600">Legajo: {emp.legajo} | {emp.departamento}</p>
                                         <p className="text-xs text-gray-500 mt-1">
                                             Horario: {emp.horarioEntrada} - {emp.horarioSalida}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            Almuerzo: {emp.horarioAlmuerzoSalida} - {emp.horarioAlmuerzoEntrada}
                                         </p>
                                         <p className="text-xs text-blue-600 mt-1 font-mono">QR: {emp.qrCode}</p>
                                     </div>
@@ -644,6 +895,42 @@ const AdminPanel = ({ user, onLogout }) => {
                 {/* Vista Marcaciones */}
                 {view === 'marcaciones' && (
                     <div>
+                        <div className="bg-white p-4 rounded-xl shadow mb-4">
+                            <h3 className="font-bold text-gray-800 mb-3">Filtros</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Buscar empleado (nombre o legajo)</label>
+                                    <input
+                                        type="text"
+                                        value={filtroEmpleado}
+                                        onChange={(e) => setFiltroEmpleado(e.target.value)}
+                                        placeholder="Ej: Juan Pérez"
+                                        className="w-full px-3 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-600 mb-1">Fecha</label>
+                                    <input
+                                        type="date"
+                                        value={filtroFecha}
+                                        onChange={(e) => setFiltroFecha(e.target.value)}
+                                        className="w-full px-3 py-2 border-2 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+                            {(filtroEmpleado || filtroFecha) && (
+                                <button
+                                    onClick={() => {
+                                        setFiltroEmpleado('');
+                                        setFiltroFecha('');
+                                    }}
+                                    className="mt-3 text-sm text-[#38BDF8] hover:underline"
+                                >
+                                    Limpiar filtros
+                                </button>
+                            )}
+                        </div>
+
                         <button 
                             onClick={downloadReport} 
                             className="w-full bg-[#38BDF8] text-white py-3 rounded-xl font-bold mb-4 hover:bg-[#0EA5E9] transition-all"
@@ -665,23 +952,26 @@ const AdminPanel = ({ user, onLogout }) => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {marcaciones.length === 0 ? (
+                                        {marcacionesMostradas.length === 0 ? (
                                             <tr>
                                                 <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
-                                                    No hay marcaciones registradas
+                                                    No hay marcaciones {filtroEmpleado || filtroFecha ? 'que coincidan con los filtros' : 'registradas'}
                                                 </td>
                                             </tr>
                                         ) : (
-                                            marcaciones.slice(-20).reverse().map(m => (
+                                            marcacionesMostradas.slice(-30).reverse().map(m => (
                                                 <tr key={m.id} className="border-t hover:bg-gray-50">
                                                     <td className="px-4 py-3 text-sm">{m.fecha}</td>
                                                     <td className="px-4 py-3 text-sm font-semibold">{m.usuarioNombre}</td>
                                                     <td className="px-4 py-3 text-sm">{m.legajo}</td>
                                                     <td className="px-4 py-3 text-sm">
                                                         <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                                                            m.tipo === 'entrada' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                                            m.tipo === 'entrada' ? 'bg-green-100 text-green-700' :
+                                                            m.tipo === 'salida' ? 'bg-red-100 text-red-700' :
+                                                            m.tipo === 'salida_almuerzo' ? 'bg-orange-100 text-orange-700' :
+                                                            'bg-yellow-100 text-yellow-700'
                                                         }`}>
-                                                            {m.tipo}
+                                                            {m.tipo.replace('_', ' ')}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 text-sm font-bold">{m.hora}</td>
@@ -700,15 +990,22 @@ const AdminPanel = ({ user, onLogout }) => {
                 )}
             </div>
 
-            {/* Modal Agregar Empleado */}
+            {/* Modales */}
             {showAddModal && (
                 <AddEmpleadoModal 
                     onClose={() => setShowAddModal(false)} 
-                    onSave={addEmpleado} 
+                    onSave={addEmpleado}
+                    empresaId={selectedEmpresa}
                 />
             )}
 
-            {/* Modal QR */}
+            {showAddEmpresaModal && (
+                <AddEmpresaModal
+                    onClose={() => setShowAddEmpresaModal(false)}
+                    onSave={addEmpresa}
+                />
+            )}
+
             {showQRModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -740,6 +1037,8 @@ const AdminPanel = ({ user, onLogout }) => {
                     </div>
                 </div>
             )}
+
+            <BrandingFooter />
         </div>
     );
 };
@@ -747,7 +1046,7 @@ const AdminPanel = ({ user, onLogout }) => {
 // ==================== APP PRINCIPAL ====================
 
 const App = () => {
-    const [mode, setMode] = useState('login'); // 'login', 'kiosko', 'admin'
+    const [mode, setMode] = useState('login');
     const [currentUser, setCurrentUser] = useState(null);
 
     useEffect(() => {
@@ -756,7 +1055,7 @@ const App = () => {
 
     const handleLogin = (user) => {
         setCurrentUser(user);
-        if (user.rol === 'admin') {
+        if (user.rol === 'admin' || user.rol === 'superadmin') {
             setMode('admin');
         } else {
             alert('Esta versión es solo para administradores. Usa el Modo Kiosco para marcar asistencia.');
