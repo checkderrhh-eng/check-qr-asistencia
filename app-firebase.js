@@ -150,11 +150,11 @@ const Logo = ({ className = "w-12 h-12" }) => (
 );
 
 const BrandingFooter = () => (
-    <div className="text-center py-4 text-gray-500 text-sm">
+    <div className="text-center py-4 text-white text-sm">
         <div className="flex items-center justify-center space-x-2">
             <span>Una app de</span>
             <Logo className="w-6 h-6" />
-            <span className="font-semibold text-[#38BDF8]">Check de Recursos Humanos</span>
+            <span className="font-semibold">Check de Recursos Humanos</span>
         </div>
     </div>
 );
@@ -380,7 +380,16 @@ const KioskoScreen = ({ onBack }) => {
         setMessage('');
         setMessageType('');
 
+        // Esperar a que el DOM se actualice
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         try {
+            // Verificar que el elemento existe
+            const readerElement = document.getElementById("reader");
+            if (!readerElement) {
+                throw new Error("Elemento reader no encontrado");
+            }
+
             if (!html5QrCodeRef.current) {
                 html5QrCodeRef.current = new Html5Qrcode("reader");
             }
@@ -576,7 +585,7 @@ const KioskoScreen = ({ onBack }) => {
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            <div id="reader" className="rounded-xl overflow-hidden"></div>
+                            <div id="reader" className="rounded-xl overflow-hidden border-2 border-gray-300"></div>
                             <button
                                 onClick={stopScanning}
                                 className="w-full bg-red-500 text-white py-3 rounded-xl font-semibold hover:bg-red-600 transition-all"
