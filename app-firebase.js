@@ -1026,22 +1026,47 @@ const AdminPanel = ({ user, onLogout }) => {
     };
 
     const loadEmpleados = async () => {
-        const snapshot = await FirebaseDB.usuarios()
-            .where('empresaId', '==', selectedEmpresa)
-            .where('rol', '==', 'empleado')
-            .get();
-        const empleadosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setEmpleados(empleadosData);
+        try {
+            const snapshot = await FirebaseDB.usuarios()
+                .where('empresaId', '==', selectedEmpresa)
+                .where('rol', '==', 'empleado')
+                .get();
+            const empleadosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setEmpleados(empleadosData);
+            console.log('✅ Empleados cargados:', empleadosData.length);
+        } catch (error) {
+            console.error('Error cargando empleados:', error);
+            setEmpleados([]);
+        }
     };
 
     const loadMarcaciones = async () => {
-        const snapshot = await FirebaseDB.marcaciones()
-            .where('empresaId', '==', selectedEmpresa)
-            .orderBy('timestamp', 'desc')
-            .limit(100)
-            .get();
-        const marcacionesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMarcaciones(marcacionesData);
+        try {
+            const snapshot = await FirebaseDB.marcaciones()
+                .where('empresaId', '==', selectedEmpresa)
+                .get();
+            
+            let marcacionesData = snapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            }));
+            
+            // Ordenar en el cliente por timestamp
+            marcacionesData.sort((a, b) => {
+                const timeA = a.timestamp ? a.timestamp.toMillis() : 0;
+                const timeB = b.timestamp ? b.timestamp.toMillis() : 0;
+                return timeB - timeA; // Descendente (más reciente primero)
+            });
+            
+            // Limitar a 100 registros
+            marcacionesData = marcacionesData.slice(0, 100);
+            
+            setMarcaciones(marcacionesData);
+            console.log('✅ Marcaciones cargadas:', marcacionesData.length);
+        } catch (error) {
+            console.error('Error cargando marcaciones:', error);
+            setMarcaciones([]);
+        }
     };
 
     const addEmpleado = async (data) => {
