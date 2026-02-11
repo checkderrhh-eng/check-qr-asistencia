@@ -121,6 +121,51 @@ const FirebaseDB = {
         }
     },
 
+    // Eliminar empresa y todos sus datos relacionados
+    async deleteEmpresa(empresaId) {
+        try {
+            // 1. Eliminar todos los usuarios de la empresa
+            const usuariosSnapshot = await this.usuarios()
+                .where('empresaId', '==', empresaId)
+                .get();
+            
+            const deleteUsuariosPromises = usuariosSnapshot.docs.map(doc => doc.ref.delete());
+            await Promise.all(deleteUsuariosPromises);
+            console.log(`✅ ${usuariosSnapshot.docs.length} usuarios eliminados`);
+
+            // 2. Eliminar todas las marcaciones de la empresa
+            const marcacionesSnapshot = await this.marcaciones()
+                .where('empresaId', '==', empresaId)
+                .get();
+            
+            const deleteMarcacionesPromises = marcacionesSnapshot.docs.map(doc => doc.ref.delete());
+            await Promise.all(deleteMarcacionesPromises);
+            console.log(`✅ ${marcacionesSnapshot.docs.length} marcaciones eliminadas`);
+
+            // 3. Eliminar adjuntos relacionados (por usuarioId)
+            const usuariosIds = usuariosSnapshot.docs.map(doc => doc.id);
+            const adjuntosPromises = usuariosIds.map(async (usuarioId) => {
+                const adjuntosSnapshot = await this.adjuntos()
+                    .where('usuarioId', '==', usuarioId)
+                    .get();
+                return adjuntosSnapshot.docs.map(doc => doc.ref.delete());
+            });
+            
+            const allAdjuntosPromises = (await Promise.all(adjuntosPromises)).flat();
+            await Promise.all(allAdjuntosPromises);
+            console.log(`✅ ${allAdjuntosPromises.length} adjuntos eliminados`);
+
+            // 4. Finalmente, eliminar la empresa
+            await this.empresas().doc(empresaId).delete();
+            console.log('✅ Empresa eliminada correctamente');
+
+            return true;
+        } catch (error) {
+            console.error('Error eliminando empresa:', error);
+            return false;
+        }
+    },
+
     // Guardar adjunto (almacenado como base64 en Firestore)
     async saveAdjunto(marcacionId, usuarioId, archivo, tipo, comentario) {
         try {
@@ -135,6 +180,73 @@ const FirebaseDB = {
             return true;
         } catch (error) {
             console.error('Error guardando adjunto:', error);
+            return false;
+        }
+    },
+
+    // Obtener adjuntos de una marcación específica
+    async getAdjuntosByMarcacion(marcacionId) {
+        try {
+            const snapshot = await this.adjuntos()
+                .where('marcacionId', '==', marcacionId)
+                .get();
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (error) {
+            console.error('Error obteniendo adjuntos:', error);
+            return [];
+        }
+    },
+
+    // Obtener todos los adjuntos de una empresa
+    async getAllAdjuntos(empresaId, usuarioId = null) {
+        try {
+            let query = this.adjuntos();
+            
+            // Si se especifica un usuario, filtrar por él
+            if (usuarioId) {
+                query = query.where('usuarioId', '==', usuarioId);
+            }
+            
+            const snapshot = await query.get();
+            const adjuntos = [];
+            
+            for (const doc of snapshot.docs) {
+                const adjunto = { id: doc.id, ...doc.data() };
+                
+                // Obtener datos de la marcación asociada
+                if (adjunto.marcacionId) {
+                    const marcacionDoc = await this.marcaciones().doc(adjunto.marcacionId).get();
+                    if (marcacionDoc.exists) {
+                        const marcacion = marcacionDoc.data();
+                        // Filtrar por empresa
+                        if (marcacion.empresaId === empresaId) {
+                            adjunto.marcacion = marcacion;
+                            adjunto.fecha = marcacion.fecha;
+                            adjunto.empleadoNombre = marcacion.usuarioNombre;
+                            adjuntos.push(adjunto);
+                        }
+                    }
+                }
+            }
+            
+            return adjuntos;
+        } catch (error) {
+            console.error('Error obteniendo adjuntos:', error);
+            return [];
+        }
+    },
+
+    // Actualizar marcación con ID de adjunto
+    async updateMarcacionWithAdjunto(marcacionId, adjuntoId) {
+        try {
+            await this.marcaciones().doc(marcacionId).update({
+                adjuntoId: adjuntoId,
+                tieneJustificativo: true,
+                updatedAt: new Date()
+            });
+            return true;
+        } catch (error) {
+            console.error('Error actualizando marcación:', error);
             return false;
         }
     }
@@ -349,6 +461,229 @@ const AdjuntoModal = ({ onClose, onSave, empleadoNombre }) => {
                         disabled={loading}
                     >
                         {loading ? 'Guardando...' : 'Guardar'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==================== MODAL ADJUNTAR DESDE DASHBOARD ====================
+
+const AdjuntarDesdeDashboardModal = ({ ausencia, onClose, onSave }) => {
+    const [tipo, setTipo] = useState('justificativo');
+    const [comentario, setComentario] = useState('');
+    const [archivo, setArchivo] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.size > 2 * 1024 * 1024) {
+                alert('El archivo es demasiado grande. Máximo 2MB');
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                alert('Solo se permiten imágenes');
+                return;
+            }
+
+            setArchivo(file);
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!archivo) {
+            alert('Por favor selecciona un archivo');
+            return;
+        }
+
+        if (!comentario.trim()) {
+            alert('Por favor ingresa un comentario');
+            return;
+        }
+
+        setLoading(true);
+        await onSave(ausencia, preview, tipo, comentario);
+        setLoading(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                <h3 className="text-xl font-bold mb-4">Adjuntar Justificativo</h3>
+                <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                    <p className="text-sm"><span className="font-semibold">Empleado:</span> {ausencia.empleadoNombre}</p>
+                    <p className="text-sm"><span className="font-semibold">Fecha:</span> {ausencia.fecha}</p>
+                    <p className="text-sm"><span className="font-semibold">Departamento:</span> {ausencia.departamento}</p>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-semibold mb-2">Tipo de documento</label>
+                        <select
+                            value={tipo}
+                            onChange={(e) => setTipo(e.target.value)}
+                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                        >
+                            <option value="justificativo">Justificativo de Ausencia</option>
+                            <option value="certificado">Certificado Médico</option>
+                            <option value="permiso">Permiso Especial</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold mb-2">Comentario</label>
+                        <textarea
+                            value={comentario}
+                            onChange={(e) => setComentario(e.target.value)}
+                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                            rows="3"
+                            placeholder="Describe el motivo..."
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold mb-2">Archivo (imagen, máx 2MB)</label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                        />
+                    </div>
+
+                    {preview && (
+                        <div className="border-2 border-gray-300 rounded-lg p-2">
+                            <p className="text-xs text-gray-600 mb-2">Vista previa:</p>
+                            <img src={preview} alt="Preview" className="w-full rounded" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 bg-gray-200 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-all"
+                        disabled={loading}
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        className="flex-1 bg-[#38BDF8] text-white py-2 rounded-lg font-semibold hover:bg-[#0EA5E9] transition-all disabled:opacity-50"
+                        disabled={loading}
+                    >
+                        {loading ? 'Guardando...' : 'Guardar'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==================== MODAL DETALLE LISTADO ====================
+
+const DetalleListadoModal = ({ titulo, datos, tipo, onClose, onAdjuntar }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">{titulo}</h3>
+                    <button
+                        onClick={onClose}
+                        className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                    >
+                        ×
+                    </button>
+                </div>
+
+                {datos.length === 0 ? (
+                    <p className="text-center text-gray-500 py-8">No hay registros</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Empleado</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Departamento</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Fecha</th>
+                                    {tipo === 'ausencias' && (
+                                        <>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Justificativo</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Acción</th>
+                                        </>
+                                    )}
+                                    {tipo === 'tardanzas' && (
+                                        <>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Hora</th>
+                                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Justificativo</th>
+                                        </>
+                                    )}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {datos.map((item, idx) => (
+                                    <tr key={idx} className="border-t hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-sm font-semibold">{item.empleadoNombre}</td>
+                                        <td className="px-4 py-3 text-sm">{item.departamento}</td>
+                                        <td className="px-4 py-3 text-sm">{item.fecha}</td>
+                                        {tipo === 'ausencias' && (
+                                            <>
+                                                <td className="px-4 py-3 text-center">
+                                                    {item.tieneJustificativo ? (
+                                                        <span className="text-green-600 font-semibold">✅ Sí</span>
+                                                    ) : (
+                                                        <span className="text-red-600 font-semibold">❌ No</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {!item.tieneJustificativo && (
+                                                        <button
+                                                            onClick={() => onAdjuntar(item)}
+                                                            className="bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-blue-600"
+                                                        >
+                                                            📎 Adjuntar
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </>
+                                        )}
+                                        {tipo === 'tardanzas' && (
+                                            <>
+                                                <td className="px-4 py-3 text-sm font-bold">{item.hora}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {item.tieneJustificativo ? (
+                                                        <span className="text-green-600 font-semibold">✅ Sí</span>
+                                                    ) : (
+                                                        <span className="text-red-600 font-semibold">❌ No</span>
+                                                    )}
+                                                </td>
+                                            </>
+                                        )}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                <div className="mt-6">
+                    <button
+                        onClick={onClose}
+                        className="w-full bg-gray-200 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-all"
+                    >
+                        Cerrar
                     </button>
                 </div>
             </div>
@@ -994,9 +1329,10 @@ const AddEmpresaModal = ({ onClose, onSave }) => {
 // ==================== PANEL ADMIN ====================
 
 const AdminPanel = ({ user, onLogout }) => {
-    const [activeTab, setActiveTab] = useState('empleados');
+    const [activeTab, setActiveTab] = useState('dashboard'); // Cambiar default a dashboard
     const [empleados, setEmpleados] = useState([]);
     const [marcaciones, setMarcaciones] = useState([]);
+    const [adjuntos, setAdjuntos] = useState([]);
     const [empresas, setEmpresas] = useState([]);
     const [selectedEmpresa, setSelectedEmpresa] = useState(user.empresaId);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -1004,7 +1340,15 @@ const AdminPanel = ({ user, onLogout }) => {
     const [showQRModal, setShowQRModal] = useState(null);
     const [showEditModal, setShowEditModal] = useState(null);
     const [filterFecha, setFilterFecha] = useState('');
+    const [filterFechaInicio, setFilterFechaInicio] = useState('');
+    const [filterFechaFin, setFilterFechaFin] = useState('');
+    const [filterEmpleado, setFilterEmpleado] = useState('');
     const [filterTipo, setFilterTipo] = useState('');
+    const [showDetalleModal, setShowDetalleModal] = useState(null);
+    const [showAdjuntarModal, setShowAdjuntarModal] = useState(null);
+    const [filterJustificativoEmpleado, setFilterJustificativoEmpleado] = useState('');
+    const [filterJustificativoFecha, setFilterJustificativoFecha] = useState('');
+    const [showConfirmDeleteEmpresa, setShowConfirmDeleteEmpresa] = useState(null);
 
     useEffect(() => {
         if (user.rol === 'superadmin') {
@@ -1013,6 +1357,7 @@ const AdminPanel = ({ user, onLogout }) => {
         if (selectedEmpresa) {
             loadEmpleados();
             loadMarcaciones();
+            loadAdjuntos();
         }
     }, [selectedEmpresa]);
 
@@ -1066,6 +1411,17 @@ const AdminPanel = ({ user, onLogout }) => {
         } catch (error) {
             console.error('Error cargando marcaciones:', error);
             setMarcaciones([]);
+        }
+    };
+
+    const loadAdjuntos = async () => {
+        try {
+            const adjuntosData = await FirebaseDB.getAllAdjuntos(selectedEmpresa);
+            setAdjuntos(adjuntosData);
+            console.log('✅ Adjuntos cargados:', adjuntosData.length);
+        } catch (error) {
+            console.error('Error cargando adjuntos:', error);
+            setAdjuntos([]);
         }
     };
 
@@ -1141,6 +1497,54 @@ const AdminPanel = ({ user, onLogout }) => {
         }
     };
 
+    const deleteEmpresa = async (empresaId, empresaNombre) => {
+        // Primera confirmación
+        const confirm1 = window.confirm(
+            `⚠️ ADVERTENCIA ⚠️\n\n` +
+            `Estás a punto de eliminar la empresa "${empresaNombre}".\n\n` +
+            `Esto eliminará PERMANENTEMENTE:\n` +
+            `• La empresa\n` +
+            `• Todos los empleados y administradores\n` +
+            `• Todas las marcaciones\n` +
+            `• Todos los justificativos adjuntados\n\n` +
+            `Esta acción NO se puede deshacer.\n\n` +
+            `¿Deseas continuar?`
+        );
+
+        if (!confirm1) return;
+
+        // Segunda confirmación
+        const confirm2 = window.confirm(
+            `⚠️ ÚLTIMA CONFIRMACIÓN ⚠️\n\n` +
+            `Por favor confirma nuevamente que deseas eliminar "${empresaNombre}" y todos sus datos.\n\n` +
+            `Escribe OK en tu mente y presiona Aceptar para proceder.`
+        );
+
+        if (!confirm2) return;
+
+        try {
+            const success = await FirebaseDB.deleteEmpresa(empresaId);
+            
+            if (success) {
+                // Si la empresa eliminada era la seleccionada, limpiar selección
+                if (selectedEmpresa === empresaId) {
+                    setSelectedEmpresa(null);
+                    setEmpleados([]);
+                    setMarcaciones([]);
+                    setAdjuntos([]);
+                }
+                
+                await loadEmpresas();
+                alert('✅ Empresa eliminada correctamente');
+            } else {
+                alert('❌ Error al eliminar la empresa');
+            }
+        } catch (error) {
+            console.error('Error en deleteEmpresa:', error);
+            alert('❌ Error al eliminar la empresa');
+        }
+    };
+
     const showQR = (empleado) => {
         setShowQRModal(empleado);
         setTimeout(() => {
@@ -1165,11 +1569,26 @@ const AdminPanel = ({ user, onLogout }) => {
     };
 
     const downloadReport = () => {
-        const marcacionesFiltradas = marcaciones.filter(m => {
-            if (filterFecha && m.fecha !== filterFecha) return false;
-            if (filterTipo && m.tipo !== filterTipo) return false;
-            return true;
-        });
+        let marcacionesFiltradas = marcaciones;
+
+        // Aplicar filtros
+        if (filterFechaInicio && filterFechaFin) {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => {
+                return m.fecha >= filterFechaInicio && m.fecha <= filterFechaFin;
+            });
+        } else if (filterFecha) {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => m.fecha === filterFecha);
+        }
+
+        if (filterTipo) {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => m.tipo === filterTipo);
+        }
+
+        if (filterEmpleado) {
+            marcacionesFiltradas = marcacionesFiltradas.filter(m => 
+                m.usuarioNombre.toLowerCase().includes(filterEmpleado.toLowerCase())
+            );
+        }
 
         let csv = 'Fecha,Empleado,Legajo,Tipo,Hora,Estado\n';
         marcacionesFiltradas.forEach(m => {
@@ -1184,9 +1603,109 @@ const AdminPanel = ({ user, onLogout }) => {
         a.click();
     };
 
+    // Calcular estadísticas del dashboard
+    const calcularAusencias = () => {
+        const hoy = new Date().toLocaleDateString('es-PY');
+        const ausentes = [];
+        
+        empleados.forEach(emp => {
+            // Buscar si tiene marcación de entrada hoy
+            const tieneEntradaHoy = marcaciones.some(m => 
+                m.usuarioId === emp.id && 
+                m.fecha === hoy && 
+                m.tipo === 'entrada'
+            );
+            
+            if (!tieneEntradaHoy) {
+                // Buscar si tiene justificativo
+                const tieneJustificativo = adjuntos.some(adj => 
+                    adj.usuarioId === emp.id && 
+                    adj.fecha === hoy
+                );
+                
+                ausentes.push({
+                    empleadoId: emp.id,
+                    empleadoNombre: emp.nombre,
+                    departamento: emp.departamento,
+                    fecha: hoy,
+                    tieneJustificativo: tieneJustificativo
+                });
+            }
+        });
+        
+        return ausentes;
+    };
+
+    const calcularTardanzas = () => {
+        return marcaciones.filter(m => 
+            m.tipo === 'entrada' && 
+            m.estado === 'tarde'
+        ).map(m => {
+            const tieneJustificativo = adjuntos.some(adj => adj.marcacionId === m.id);
+            return {
+                ...m,
+                empleadoNombre: m.usuarioNombre,
+                departamento: m.usuarioDepartamento || 'N/A',
+                tieneJustificativo: tieneJustificativo
+            };
+        });
+    };
+
+    const handleAdjuntarJustificativo = async (ausencia, archivo, tipo, comentario) => {
+        try {
+            // Determinar el marcacionId
+            let marcacionId = ausencia.marcacionId;
+            
+            // Si ya tiene marcacionId (viene desde pestaña Justificativos), usarlo directamente
+            if (!marcacionId) {
+                // Crear registro de ausencia (viene desde dashboard)
+                const marcacionRef = await FirebaseDB.marcaciones().add({
+                    usuarioId: ausencia.empleadoId,
+                    usuarioNombre: ausencia.empleadoNombre,
+                    empresaId: selectedEmpresa,
+                    fecha: ausencia.fecha,
+                    tipo: 'ausencia',
+                    estado: 'justificado',
+                    timestamp: new Date()
+                });
+                marcacionId = marcacionRef.id;
+            }
+            
+            // Guardar adjunto
+            await FirebaseDB.saveAdjunto(marcacionId, ausencia.empleadoId, archivo, tipo, comentario);
+            
+            // Marcar como justificado
+            await FirebaseDB.updateMarcacionWithAdjunto(marcacionId, 'temp');
+            
+            // Recargar datos
+            await loadMarcaciones();
+            await loadAdjuntos();
+            
+            setShowAdjuntarModal(null);
+            alert('✅ Justificativo guardado correctamente');
+        } catch (error) {
+            console.error('Error guardando justificativo:', error);
+            alert('❌ Error al guardar el justificativo');
+        }
+    };
+
     const marcacionesMostradas = marcaciones.filter(m => {
-        if (filterFecha && m.fecha !== filterFecha) return false;
+        // Filtro por rango de fechas
+        if (filterFechaInicio && filterFechaFin) {
+            if (m.fecha < filterFechaInicio || m.fecha > filterFechaFin) return false;
+        } else if (filterFecha) {
+            // Mantener compatibilidad con filtro de fecha única
+            if (m.fecha !== filterFecha) return false;
+        }
+        
+        // Filtro por tipo
         if (filterTipo && m.tipo !== filterTipo) return false;
+        
+        // Filtro por nombre de empleado
+        if (filterEmpleado && !m.usuarioNombre.toLowerCase().includes(filterEmpleado.toLowerCase())) {
+            return false;
+        }
+        
         return true;
     });
 
@@ -1221,6 +1740,19 @@ const AdminPanel = ({ user, onLogout }) => {
                                     <option key={emp.id} value={emp.id}>{emp.nombre}</option>
                                 ))}
                             </select>
+                            {selectedEmpresa && (
+                                <button
+                                    onClick={() => {
+                                        const empresa = empresas.find(e => e.id === selectedEmpresa);
+                                        if (empresa) {
+                                            deleteEmpresa(selectedEmpresa, empresa.nombre);
+                                        }
+                                    }}
+                                    className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition-all"
+                                >
+                                    🗑️ Eliminar
+                                </button>
+                            )}
                             <button
                                 onClick={() => setShowAddEmpresaModal(true)}
                                 className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 transition-all"
@@ -1232,10 +1764,18 @@ const AdminPanel = ({ user, onLogout }) => {
                 )}
 
                 <div className="bg-white rounded-xl shadow-lg mb-4">
-                    <div className="flex border-b">
+                    <div className="flex border-b overflow-x-auto">
+                        <button
+                            onClick={() => setActiveTab('dashboard')}
+                            className={`flex-1 py-3 font-semibold transition-all whitespace-nowrap ${
+                                activeTab === 'dashboard' ? 'bg-[#38BDF8] text-white' : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            📊 Dashboard
+                        </button>
                         <button
                             onClick={() => setActiveTab('empleados')}
-                            className={`flex-1 py-3 font-semibold transition-all ${
+                            className={`flex-1 py-3 font-semibold transition-all whitespace-nowrap ${
                                 activeTab === 'empleados' ? 'bg-[#38BDF8] text-white' : 'text-gray-600 hover:bg-gray-50'
                             }`}
                         >
@@ -1243,14 +1783,103 @@ const AdminPanel = ({ user, onLogout }) => {
                         </button>
                         <button
                             onClick={() => setActiveTab('marcaciones')}
-                            className={`flex-1 py-3 font-semibold transition-all ${
+                            className={`flex-1 py-3 font-semibold transition-all whitespace-nowrap ${
                                 activeTab === 'marcaciones' ? 'bg-[#38BDF8] text-white' : 'text-gray-600 hover:bg-gray-50'
                             }`}
                         >
-                            📊 Marcaciones
+                            📋 Marcaciones
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('justificativos')}
+                            className={`flex-1 py-3 font-semibold transition-all whitespace-nowrap ${
+                                activeTab === 'justificativos' ? 'bg-[#38BDF8] text-white' : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            📁 Justificativos
                         </button>
                     </div>
                 </div>
+
+                {activeTab === 'dashboard' && (
+                    <div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            {/* Indicador: Total Empleados */}
+                            <div className="bg-white rounded-xl shadow p-6 hover:shadow-lg transition-all">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-semibold">Total Empleados</p>
+                                        <p className="text-3xl font-bold text-[#38BDF8] mt-2">{empleados.length}</p>
+                                    </div>
+                                    <div className="bg-blue-100 p-4 rounded-full">
+                                        <span className="text-3xl">👥</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Indicador: Ausencias (clickeable) */}
+                            <div 
+                                className="bg-white rounded-xl shadow p-6 hover:shadow-lg transition-all cursor-pointer"
+                                onClick={() => {
+                                    const ausentes = calcularAusencias();
+                                    setShowDetalleModal({
+                                        titulo: 'Ausencias del Día',
+                                        datos: ausentes,
+                                        tipo: 'ausencias'
+                                    });
+                                }}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-semibold">Ausencias Hoy</p>
+                                        <p className="text-3xl font-bold text-orange-500 mt-2">{calcularAusencias().length}</p>
+                                        <p className="text-xs text-gray-500 mt-1">Click para ver detalle</p>
+                                    </div>
+                                    <div className="bg-orange-100 p-4 rounded-full">
+                                        <span className="text-3xl">⚠️</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Indicador: Llegadas Tarde (clickeable) */}
+                            <div 
+                                className="bg-white rounded-xl shadow p-6 hover:shadow-lg transition-all cursor-pointer"
+                                onClick={() => {
+                                    const tardanzas = calcularTardanzas();
+                                    setShowDetalleModal({
+                                        titulo: 'Llegadas Tardías',
+                                        datos: tardanzas,
+                                        tipo: 'tardanzas'
+                                    });
+                                }}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-gray-600 text-sm font-semibold">Llegadas Tarde</p>
+                                        <p className="text-3xl font-bold text-red-500 mt-2">{calcularTardanzas().length}</p>
+                                        <p className="text-xs text-gray-500 mt-1">Click para ver detalle</p>
+                                    </div>
+                                    <div className="bg-red-100 p-4 rounded-full">
+                                        <span className="text-3xl">🕐</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow p-6">
+                            <h3 className="text-lg font-bold mb-4">📈 Resumen General</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="border-l-4 border-green-500 pl-4">
+                                    <p className="text-sm text-gray-600">Marcaciones Totales</p>
+                                    <p className="text-2xl font-bold text-gray-800">{marcaciones.length}</p>
+                                </div>
+                                <div className="border-l-4 border-purple-500 pl-4">
+                                    <p className="text-sm text-gray-600">Justificativos Adjuntados</p>
+                                    <p className="text-2xl font-bold text-gray-800">{adjuntos.length}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'empleados' && (
                     <div>
@@ -1322,13 +1951,41 @@ const AdminPanel = ({ user, onLogout }) => {
                 {activeTab === 'marcaciones' && (
                     <div>
                         <div className="bg-white rounded-xl shadow p-4 mb-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <input
-                                    type="date"
-                                    value={filterFecha}
-                                    onChange={(e) => setFilterFecha(e.target.value)}
-                                    className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha Inicio</label>
+                                    <input
+                                        type="date"
+                                        value={filterFechaInicio}
+                                        onChange={(e) => {
+                                            setFilterFechaInicio(e.target.value);
+                                            setFilterFecha(''); // Limpiar filtro de fecha única
+                                        }}
+                                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha Fin</label>
+                                    <input
+                                        type="date"
+                                        value={filterFechaFin}
+                                        onChange={(e) => {
+                                            setFilterFechaFin(e.target.value);
+                                            setFilterFecha(''); // Limpiar filtro de fecha única
+                                        }}
+                                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Empleado</label>
+                                    <input
+                                        type="text"
+                                        value={filterEmpleado}
+                                        onChange={(e) => setFilterEmpleado(e.target.value)}
+                                        placeholder="Buscar por nombre..."
+                                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
                                 <select
                                     value={filterTipo}
                                     onChange={(e) => setFilterTipo(e.target.value)}
@@ -1340,13 +1997,19 @@ const AdminPanel = ({ user, onLogout }) => {
                                     <option value="salida_almuerzo">Salida Almuerzo</option>
                                     <option value="entrada_almuerzo">Entrada Almuerzo</option>
                                 </select>
-                                <button
-                                    onClick={() => { setFilterFecha(''); setFilterTipo(''); }}
-                                    className="bg-gray-200 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-all"
-                                >
-                                    Limpiar filtros
-                                </button>
                             </div>
+                            <button
+                                onClick={() => { 
+                                    setFilterFecha(''); 
+                                    setFilterFechaInicio(''); 
+                                    setFilterFechaFin(''); 
+                                    setFilterEmpleado(''); 
+                                    setFilterTipo(''); 
+                                }}
+                                className="w-full mt-3 bg-gray-200 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-all"
+                            >
+                                Limpiar filtros
+                            </button>
                         </div>
 
                         <button 
@@ -1404,6 +2067,193 @@ const AdminPanel = ({ user, onLogout }) => {
                         </div>
                     </div>
                 )}
+
+                {activeTab === 'justificativos' && (
+                    <div>
+                        {/* Header con filtros */}
+                        <div className="bg-white rounded-xl shadow p-6 mb-4">
+                            <h3 className="text-lg font-bold mb-4">📁 Todos los Justificativos</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Total de adjuntos: <span className="font-bold">{adjuntos.length}</span>
+                            </p>
+
+                            {/* Filtros */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Buscar Empleado</label>
+                                    <input
+                                        type="text"
+                                        value={filterJustificativoEmpleado}
+                                        onChange={(e) => setFilterJustificativoEmpleado(e.target.value)}
+                                        placeholder="Buscar por nombre..."
+                                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Filtrar por Fecha</label>
+                                    <input
+                                        type="date"
+                                        value={filterJustificativoFecha}
+                                        onChange={(e) => setFilterJustificativoFecha(e.target.value)}
+                                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#38BDF8] focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {(filterJustificativoEmpleado || filterJustificativoFecha) && (
+                                <button
+                                    onClick={() => {
+                                        setFilterJustificativoEmpleado('');
+                                        setFilterJustificativoFecha('');
+                                    }}
+                                    className="w-full mt-3 bg-gray-200 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-all"
+                                >
+                                    Limpiar filtros
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Tabla de justificativos */}
+                        {(() => {
+                            // Obtener todas las marcaciones con información enriquecida
+                            const marcacionesConInfo = marcaciones.map(m => {
+                                const empleado = empleados.find(emp => emp.id === m.usuarioId);
+                                const tieneJustificativo = adjuntos.some(adj => adj.marcacionId === m.id);
+                                const adjunto = adjuntos.find(adj => adj.marcacionId === m.id);
+                                
+                                return {
+                                    ...m,
+                                    departamento: empleado?.departamento || 'N/A',
+                                    tieneJustificativo: tieneJustificativo,
+                                    adjunto: adjunto,
+                                    tipoMarcacion: m.tipo === 'entrada' && m.estado === 'tarde' ? 'Llegada Tardía' : 
+                                                  m.tipo === 'ausencia' ? 'Ausencia' : 'Otro'
+                                };
+                            });
+
+                            // Filtrar marcaciones
+                            const marcacionesFiltradas = marcacionesConInfo.filter(m => {
+                                // Solo mostrar entradas tardías y ausencias
+                                if (m.tipo !== 'ausencia' && !(m.tipo === 'entrada' && m.estado === 'tarde')) {
+                                    return false;
+                                }
+
+                                // Filtrar por empleado
+                                if (filterJustificativoEmpleado && 
+                                    !m.usuarioNombre.toLowerCase().includes(filterJustificativoEmpleado.toLowerCase())) {
+                                    return false;
+                                }
+
+                                // Filtrar por fecha
+                                if (filterJustificativoFecha && m.fecha !== filterJustificativoFecha) {
+                                    return false;
+                                }
+
+                                return true;
+                            });
+
+                            if (marcacionesFiltradas.length === 0) {
+                                return (
+                                    <div className="bg-white rounded-xl shadow p-8 text-center">
+                                        <p className="text-gray-500">
+                                            {filterJustificativoEmpleado || filterJustificativoFecha 
+                                                ? 'No hay registros que coincidan con los filtros' 
+                                                : 'No hay ausencias ni llegadas tardías registradas'}
+                                        </p>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div className="bg-white rounded-xl shadow overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Empleado</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Departamento</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Fecha</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Tipo</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Estado</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {marcacionesFiltradas.map((m, idx) => (
+                                                    <tr key={m.id || idx} className="border-t hover:bg-gray-50">
+                                                        <td className="px-4 py-3 text-sm font-semibold">{m.usuarioNombre}</td>
+                                                        <td className="px-4 py-3 text-sm">{m.departamento}</td>
+                                                        <td className="px-4 py-3 text-sm">{m.fecha}</td>
+                                                        <td className="px-4 py-3 text-sm">
+                                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                                                m.tipoMarcacion === 'Llegada Tardía' ? 'bg-orange-100 text-orange-700' :
+                                                                m.tipoMarcacion === 'Ausencia' ? 'bg-red-100 text-red-700' :
+                                                                'bg-gray-100 text-gray-700'
+                                                            }`}>
+                                                                {m.tipoMarcacion}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {m.tieneJustificativo ? (
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <span className="text-green-600 font-semibold">✅ Con justificativo</span>
+                                                                    {m.adjunto && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                const win = window.open();
+                                                                                win.document.write(`
+                                                                                    <html>
+                                                                                        <head><title>Justificativo - ${m.usuarioNombre}</title></head>
+                                                                                        <body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:100vh; background:#f3f4f6; padding:20px;">
+                                                                                            <div style="background:white; padding:20px; border-radius:8px; margin-bottom:20px; max-width:800px;">
+                                                                                                <h3 style="margin:0 0 10px 0;">Comentario:</h3>
+                                                                                                <p style="margin:0;">${m.adjunto.comentario || 'Sin comentario'}</p>
+                                                                                                <p style="margin:10px 0 0 0; font-size:12px; color:#666;">Tipo: ${m.adjunto.tipo}</p>
+                                                                                            </div>
+                                                                                            <img src="${m.adjunto.archivo}" style="max-width:100%; max-height:70vh; border-radius:8px; box-shadow:0 4px 6px rgba(0,0,0,0.1);" />
+                                                                                        </body>
+                                                                                    </html>
+                                                                                `);
+                                                                            }}
+                                                                            className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                                                        >
+                                                                            Ver detalles
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-red-600 font-semibold">❌ Sin justificativo</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {!m.tieneJustificativo && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setShowAdjuntarModal({
+                                                                            marcacionId: m.id,
+                                                                            empleadoId: m.usuarioId,
+                                                                            empleadoNombre: m.usuarioNombre,
+                                                                            departamento: m.departamento,
+                                                                            fecha: m.fecha,
+                                                                            tipo: m.tipoMarcacion
+                                                                        });
+                                                                    }}
+                                                                    className="bg-blue-500 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-blue-600"
+                                                                >
+                                                                    📎 Adjuntar
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
             </div>
 
             {showAddModal && (
@@ -1426,6 +2276,27 @@ const AdminPanel = ({ user, onLogout }) => {
                     empleado={showEditModal}
                     onClose={() => setShowEditModal(null)}
                     onSave={updateEmpleado}
+                />
+            )}
+
+            {showDetalleModal && (
+                <DetalleListadoModal
+                    titulo={showDetalleModal.titulo}
+                    datos={showDetalleModal.datos}
+                    tipo={showDetalleModal.tipo}
+                    onClose={() => setShowDetalleModal(null)}
+                    onAdjuntar={(ausencia) => {
+                        setShowAdjuntarModal(ausencia);
+                        setShowDetalleModal(null);
+                    }}
+                />
+            )}
+
+            {showAdjuntarModal && (
+                <AdjuntarDesdeDashboardModal
+                    ausencia={showAdjuntarModal}
+                    onClose={() => setShowAdjuntarModal(null)}
+                    onSave={handleAdjuntarJustificativo}
                 />
             )}
 
